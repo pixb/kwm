@@ -310,8 +310,6 @@ pub fn reload_config(self: *Self) void {
 
     if (comptime build_options.bar_enabled) {
         if (mask.bar) {
-            self.stop_listening_status();
-
             var it = self.outputs.safeIterator(.forward);
             while (it.next()) |output| {
                 if (mask.bar) {
@@ -319,6 +317,8 @@ pub fn reload_config(self: *Self) void {
                 }
                 output.bar.damage(.all);
             }
+
+            self.start_listening_status();
         }
     }
 }

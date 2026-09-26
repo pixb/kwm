@@ -371,3 +371,74 @@ fn requiresAllocator(T: type) bool {
         else => false,
     };
 }
+
+
+const testing = std.testing;
+
+test "deep_equal: strings and primitives" {
+    const hello: []const u8 = "hello";
+    const hello2: []const u8 = "hello";
+    const hallo: []const u8 = "hallo";
+    const shorter: []const u8 = "hell";
+    try testing.expect(deep_equal([]const u8, &hello, &hello2));
+    try testing.expect(!deep_equal([]const u8, &hello, &hallo));
+    try testing.expect(!deep_equal([]const u8, &hello, &shorter));
+
+    const yes = true;
+    const no = false;
+    try testing.expect(deep_equal(bool, &yes, &yes));
+    try testing.expect(!deep_equal(bool, &yes, &no));
+
+    const n1: u32 = 42;
+    const n2: u32 = 42;
+    const n3: u32 = 43;
+    try testing.expect(deep_equal(u32, &n1, &n2));
+    try testing.expect(!deep_equal(u32, &n1, &n3));
+}
+
+test "deep_equal: optionals" {
+    const a: ?u32 = 1;
+    const b: ?u32 = 1;
+    const c: ?u32 = 2;
+    const n1: ?u32 = null;
+    const n2: ?u32 = null;
+    try testing.expect(deep_equal(?u32, &a, &b));
+    try testing.expect(!deep_equal(?u32, &a, &c));
+    try testing.expect(deep_equal(?u32, &n1, &n2));
+    try testing.expect(!deep_equal(?u32, &a, &n1));
+}
+
+test "deep_equal: tagged unions compare tag and payload" {
+    const U = union(enum) { none, num: u32, text: []const u8 };
+    const a: U = .{ .num = 5 };
+    const b: U = .{ .num = 5 };
+    const c: U = .{ .num = 6 };
+    const d: U = .{ .text = "5" };
+    const e: U = .none;
+    const f: U = .none;
+    try testing.expect(deep_equal(U, &a, &b));
+    try testing.expect(!deep_equal(U, &a, &c));
+    try testing.expect(!deep_equal(U, &a, &d));
+    try testing.expect(deep_equal(U, &e, &f));
+}
+
+test "deep_equal: nested structs, arrays and floats" {
+    const S = struct { name: []const u8, n: u8, opt: ?i32 };
+    const a: S = .{ .name = "x", .n = 1, .opt = null };
+    const b: S = .{ .name = "x", .n = 1, .opt = null };
+    const c: S = .{ .name = "x", .n = 2, .opt = null };
+    try testing.expect(deep_equal(S, &a, &b));
+    try testing.expect(!deep_equal(S, &a, &c));
+
+    const arr1 = [3]u8{ 1, 2, 3 };
+    const arr2 = [3]u8{ 1, 2, 3 };
+    const arr3 = [3]u8{ 1, 2, 4 };
+    try testing.expect(deep_equal([3]u8, &arr1, &arr2));
+    try testing.expect(!deep_equal([3]u8, &arr1, &arr3));
+
+    const f1: f32 = 0.5;
+    const f2: f32 = 0.5;
+    const f3: f32 = 0.75;
+    try testing.expect(deep_equal(f32, &f1, &f2));
+    try testing.expect(!deep_equal(f32, &f1, &f3));
+}

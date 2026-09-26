@@ -31,3 +31,35 @@ pub fn is_match(self: *const Self, haystack: ?[]const u8) bool {
 
     return matched;
 }
+
+
+const testing = std.testing;
+
+test "pattern: literal match" {
+    const p: Self = .{ .str = "firefox" };
+    try testing.expect(p.is_match("firefox"));
+    try testing.expect(!p.is_match("Firefox"));
+    try testing.expect(!p.is_match("firefox-esr"));
+    try testing.expect(!p.is_match(""));
+    try testing.expect(!p.is_match(null));
+}
+
+test "pattern: literal does not interpret regex metacharacters" {
+    const p: Self = .{ .str = "fire.*" };
+    try testing.expect(p.is_match("fire.*"));
+    try testing.expect(!p.is_match("firefox"));
+}
+
+test "pattern: regex match" {
+    const p: Self = .{ .str = "fire.*", .regex = true };
+    try testing.expect(p.is_match("firefox"));
+    try testing.expect(p.is_match("firestorm"));
+    try testing.expect(!p.is_match("chrome"));
+}
+
+test "pattern: match_null controls null haystack" {
+    const with_null: Self = .{ .str = "x", .match_null = true };
+    const without: Self = .{ .str = "x" };
+    try testing.expect(with_null.is_match(null));
+    try testing.expect(!without.is_match(null));
+}

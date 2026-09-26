@@ -181,3 +181,131 @@ pub fn free(gpa: mem.Allocator, config: Config) void {
         null
     );
 }
+
+
+const testing = std.testing;
+
+var test_io_ready = false;
+fn testIo() Io {
+    if (!test_io_ready) {
+        testing.io_instance = .init(std.heap.page_allocator, .{});
+        test_io_ready = true;
+    }
+    return testing.io;
+}
+
+test "load: minimal config gets defaults" {
+    const gpa = testing.allocator;
+    const io = testIo();
+
+    var env: process.Environ.Map = .init(gpa);
+    defer env.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "config.zon", .data = ".{}\n" });
+
+    const abs_path = try tmp.dir.realPathFileAlloc(io, "config.zon", gpa);
+    defer gpa.free(abs_path);
+
+    const cfg = try load(.{ .gpa = gpa, .io = io, .env = &env }, abs_path);
+    defer free(gpa, cfg);
+
+    try testing.expectEqualStrings(default.bar.font, cfg.bar.font);
+    try testing.expectEqual(default.bar.position, cfg.bar.position);
+}
+
+
+fn writeTmpConfig(tmp: *testing.TmpDir, io: Io, comptime name: []const u8, comptime content: []const u8) !void {
+    try tmp.dir.writeFile(io, .{ .sub_path = name, .data = content });
+}
+
+fn tmpAbsPath(tmp: *testing.TmpDir, io: Io, gpa: mem.Allocator, comptime name: []const u8) ![:0]const u8 {
+    return try tmp.dir.realPathFileAlloc(io, name, gpa);
+}
+
+fn expectMask(mask: meta.field_mask(Config), comptime only: []const []const u8) !void {
+    inline for (@typeInfo(@TypeOf(mask)).@"struct".fields) |field| {
+        const want = for (only) |name| {
+            if (mem.eql(u8, name, field.name)) break true;
+        } else false;
+        try testing.expectEqual(want, @field(mask, field.name));
+    }
+}
+
+test "reload: identical config yields empty mask" {
+    const gpa = testing.allocator;
+    const io = testIo();
+    var env: process.Environ.Map = .init(gpa);
+    defer env.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try writeTmpConfig(&tmp, io, "a.zon", ".{ .bar = .{ .font = \"Mono:12\" } }\n");
+    try writeTmpConfig(&tmp, io, "b.zon", ".{ .bar = .{ .font = \"Mono:12\" } }\n");
+
+    const path_a = try tmpAbsPath(&tmp, io, gpa, "a.zon");
+    defer gpa.free(path_a);
+    const path_b = try tmpAbsPath(&tmp, io, gpa, "b.zon");
+    defer gpa.free(path_b);
+
+    var cfg = try load(.{ .gpa = gpa, .io = io, .env = &env }, path_a);
+    defer free(gpa, cfg);
+
+    const mask = try reload(.{ .gpa = gpa, .io = io, .env = &env }, &cfg, path_b);
+    try expectMask(mask, &.{});
+}
+
+test "reload: bar font change sets only mask.bar and swaps old config" {
+    const gpa = testing.allocator;
+    const io = testIo();
+    var env: process.Environ.Map = .init(gpa);
+    defer env.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try writeTmpConfig(&tmp, io, "a.zon", ".{ .bar = .{ .font = \"Mono:12\" } }\n");
+    try writeTmpConfig(&tmp, io, "b.zon", ".{ .bar = .{ .font = \"Mono:14\" } }\n");
+
+    const path_a = try tmpAbsPath(&tmp, io, gpa, "a.zon");
+    defer gpa.free(path_a);
+    const path_b = try tmpAbsPath(&tmp, io, gpa, "b.zon");
+    defer gpa.free(path_b);
+
+    var cfg = try load(.{ .gpa = gpa, .io = io, .env = &env }, path_a);
+    defer free(gpa, cfg);
+    try testing.expectEqualStrings("Mono:12", cfg.bar.font);
+
+    const mask = try reload(.{ .gpa = gpa, .io = io, .env = &env }, &cfg, path_b);
+    try expectMask(mask, &.{"bar"});
+    try testing.expectEqualStrings("Mono:14", cfg.bar.font);
+}
+
+test "reload: bindings change sets only mask.bindings" {
+    const gpa = testing.allocator;
+    const io = testIo();
+    var env: process.Environ.Map = .init(gpa);
+    defer env.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try writeTmpConfig(&tmp, io, "a.zon", ".{}\n");
+    try writeTmpConfig(
+        &tmp,
+        io,
+        "b.zon",
+        ".{ .bindings = .{ .repeat_info = .{ .rate = 99, .delay = 88 } } }\n",
+    );
+
+    const path_a = try tmpAbsPath(&tmp, io, gpa, "a.zon");
+    defer gpa.free(path_a);
+    const path_b = try tmpAbsPath(&tmp, io, gpa, "b.zon");
+    defer gpa.free(path_b);
+
+    var cfg = try load(.{ .gpa = gpa, .io = io, .env = &env }, path_a);
+    defer free(gpa, cfg);
+
+    const mask = try reload(.{ .gpa = gpa, .io = io, .env = &env }, &cfg, path_b);
+    try expectMask(mask, &.{"bindings"});
+    try testing.expectEqual(@as(i32, 99), cfg.bindings.repeat_info.rate);
+}

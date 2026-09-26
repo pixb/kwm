@@ -46,3 +46,28 @@ pub fn match(self: *const Self, app_id: ?[]const u8, title: ?[]const u8) bool {
 
     return true;
 }
+
+
+const testing = std.testing;
+
+test "window rule: requires both app_id and title to match" {
+    const r: Self = .{
+        .app_id = .{ .str = "firefox" },
+        .title = .{ .str = "Mozilla Firefox" },
+    };
+    try testing.expect(r.match("firefox", "Mozilla Firefox"));
+    try testing.expect(!r.match("chromium", "Mozilla Firefox"));
+    try testing.expect(!r.match("firefox", "Other Title"));
+}
+
+test "window rule: absent patterns match anything" {
+    const r: Self = .{};
+    try testing.expect(r.match(null, null));
+    try testing.expect(r.match("any.app", "any title"));
+}
+
+test "window rule: match_null matches missing field" {
+    const r: Self = .{ .app_id = .{ .str = "ghost", .match_null = true } };
+    try testing.expect(r.match(null, "t"));
+    try testing.expect(!r.match("other", "t"));
+}
